@@ -29,16 +29,20 @@ class QdrantService:
         Find the best matching collection based on curriculum and subject.
         
         Args:
-            curriculum: Name of the curriculum
-            subject: Name of the subject
+            curriculum: Name of the curriculum (e.g., 'Ontario', 'Common Core')
+            subject: Name of the subject (e.g., 'Mathematics', 'Science')
             
         Returns:
             str: Name of the best matching collection
             
         Raises:
-            HTTPException: If no collections are found
+            HTTPException: If no collections are found or no good match is found
         """
         try:
+            from fastapi import status
+            import fnmatch
+            
+            # Get all collections
             collections = self.client.get_collections()
             collection_names = [col.name for col in collections.collections]
             
@@ -48,37 +52,66 @@ class QdrantService:
                     detail="No collections found in Qdrant"
                 )
             
-            norm_curriculum = curriculum.lower().replace(" ", "_")
-            norm_subject = subject.lower().replace(" ", "_")
+            # Normalize inputs
+            norm_curriculum = curriculum.lower().strip().replace(" ", "_")
+            norm_subject = subject.lower().strip().replace(" ", "_")
             
-            search_patterns = [
-                f"{norm_curriculum}_{norm_subject}",
-                f"%_{norm_subject}",
-                f"{norm_curriculum}_%",
-                norm_subject,
-                f"%{norm_subject}%"
+            logger.info(f"Searching for collection with curriculum: {norm_curriculum}, subject: {norm_subject}")
+            logger.info(f"Available collections: {collection_names}")
+            
+            # Try exact match first
+            exact_match = f"{norm_curriculum}_{norm_subject}"
+            if exact_match in collection_names:
+                logger.info(f"Found exact match: {exact_match}")
+                return exact_match
+                
+            # Try different patterns in order of specificity
+            patterns_to_try = [
+                # Exact match with different case
+                lambda: next((name for name in collection_names 
+                            if name.lower() == f"{norm_curriculum}_{norm_subject}"), None),
+                # Match both curriculum and subject in any order
+                lambda: next((name for name in collection_names 
+                            if norm_curriculum in name.lower() and norm_subject in name.lower()), None),
+                # Match subject with wildcard for curriculum
+                lambda: next((name for name in collection_names 
+                            if name.lower().endswith(f"_{norm_subject}")), None),
+                # Match curriculum with wildcard for subject
+                lambda: next((name for name in collection_names 
+                            if name.lower().startswith(f"{norm_curriculum}_")), None),
+                # Match just the subject
+                lambda: next((name for name in collection_names 
+                            if norm_subject in name.lower()), None),
+                # Match just the curriculum
+                lambda: next((name for name in collection_names 
+                            if norm_curriculum in name.lower()), None),
+                # Try fuzzy matching for subject
+                lambda: next((name for name in collection_names 
+                            if any(term in name.lower() for term in norm_subject.split('_'))), None)
             ]
             
-            for pattern in search_patterns:
-                if pattern in collection_names:
-                    return pattern
-                
-                if "%" in pattern:
-                    import fnmatch
-                    matches = [name for name in collection_names 
-                             if fnmatch.fnmatch(name, pattern)]
-                    if matches:
-                        for match in matches:
-                            if norm_curriculum in match and norm_subject in match:
-                                return match
-                        return matches[0]
+            # Try each pattern until we find a match
+            for pattern_func in patterns_to_try:
+                match = pattern_func()
+                if match:
+                    logger.info(f"Found matching collection: {match}")
+                    return match
             
-            for name in collection_names:
-                if norm_curriculum in name:
-                    return name
-            
-            if collection_names:
-                return collection_names[0]
+            # If we get here, no good match was found
+            error_msg = (
+                f"No matching collection found for curriculum '{curriculum}' and subject '{subject}'. "
+                f"Available collections: {', '.join(collection_names)}"
+            )
+            logger.error(error_msg)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "No matching collection found",
+                    "available_collections": collection_names,
+                    "requested_curriculum": curriculum,
+                    "requested_subject": subject
+                }
+            )
                 
         except Exception as e:
             logger.error(f"Error finding matching collection: {str(e)}")
