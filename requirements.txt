@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+pydantic-settings
+openai
+qdrant-client
+groq
+python-multipart
+llama-index
+llama-index-llms-groq
+llama-index-embeddings-openai
+llama-index-vector-stores-qdrant
