@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = [
         "http://localhost:3000",  # Default frontend port
         "http://localhost:8000",  # Default backend port
+        "http://localhost:5173",  # Vite default frontend port
     ]
     
     @validator("BACKEND_CORS_ORIGINS", pre=True)

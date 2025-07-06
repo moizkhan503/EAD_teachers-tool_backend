@@ -40,7 +40,7 @@ class QdrantService:
         """
         try:
             from fastapi import status
-            import fnmatch
+            from difflib import get_close_matches
             
             # Get all collections
             collections = self.client.get_collections()
@@ -59,47 +59,88 @@ class QdrantService:
             logger.info(f"Searching for collection with curriculum: {norm_curriculum}, subject: {norm_subject}")
             logger.info(f"Available collections: {collection_names}")
             
-            # Try exact match first
-            exact_match = f"{norm_curriculum}_{norm_subject}"
-            if exact_match in collection_names:
-                logger.info(f"Found exact match: {exact_match}")
-                return exact_match
+            # Common typos and variations
+            variations = {
+                'columbia': 'colambia',
+                'maths': 'math',
+                'mathematics': 'math',
+                'sci': 'science',
+                'eng': 'english',
+                'lang': 'language',
+                'lit': 'literature'
+            }
+            
+            # Generate variations for curriculum and subject
+            def get_variations(term):
+                terms = {term}
+                # Add singular/plural variations
+                if term.endswith('s'):
+                    terms.add(term[:-1])
+                else:
+                    terms.add(term + 's')
+                # Add common variations
+                for k, v in variations.items():
+                    if k in term:
+                        terms.add(term.replace(k, v))
+                    if v in term:
+                        terms.add(term.replace(v, k))
+                return terms
+            
+            # Score each collection based on match quality
+            def score_collection(collection_name):
+                name = collection_name.lower()
+                score = 0
                 
-            # Try different patterns in order of specificity
-            patterns_to_try = [
-                # Exact match with different case
-                lambda: next((name for name in collection_names 
-                            if name.lower() == f"{norm_curriculum}_{norm_subject}"), None),
-                # Match both curriculum and subject in any order
-                lambda: next((name for name in collection_names 
-                            if norm_curriculum in name.lower() and norm_subject in name.lower()), None),
-                # Match subject with wildcard for curriculum
-                lambda: next((name for name in collection_names 
-                            if name.lower().endswith(f"_{norm_subject}")), None),
-                # Match curriculum with wildcard for subject
-                lambda: next((name for name in collection_names 
-                            if name.lower().startswith(f"{norm_curriculum}_")), None),
-                # Match just the subject
-                lambda: next((name for name in collection_names 
-                            if norm_subject in name.lower()), None),
-                # Match just the curriculum
-                lambda: next((name for name in collection_names 
-                            if norm_curriculum in name.lower()), None),
-                # Try fuzzy matching for subject
-                lambda: next((name for name in collection_names 
-                            if any(term in name.lower() for term in norm_subject.split('_'))), None)
+                # Check for exact matches
+                if f"{norm_curriculum}_{norm_subject}" == name:
+                    return 100  # Perfect match
+                
+                # Check for exact matches with variations
+                for c in get_variations(norm_curriculum):
+                    for s in get_variations(norm_subject):
+                        if f"{c}_{s}" == name:
+                            return 95  # Variation match
+                
+                # Check for partial matches
+                has_curriculum = any(c in name for c in get_variations(norm_curriculum))
+                has_subject = any(s in name for s in get_variations(norm_subject))
+                
+                if has_curriculum and has_subject:
+                    score += 80  # Both parts match
+                elif has_curriculum or has_subject:
+                    score += 40  # Only one part matches
+                
+                # Check for close matches using difflib
+                curriculum_matches = get_close_matches(norm_curriculum, name.split('_'), n=1, cutoff=0.6)
+                subject_matches = get_close_matches(norm_subject, name.split('_'), n=1, cutoff=0.6)
+                
+                if curriculum_matches and subject_matches:
+                    score += 70  # Close match for both
+                elif curriculum_matches or subject_matches:
+                    score += 35  # Close match for one
+                
+                return score
+            
+            # Score all collections
+            scored_collections = [
+                (name, score_collection(name))
+                for name in collection_names
             ]
             
-            # Try each pattern until we find a match
-            for pattern_func in patterns_to_try:
-                match = pattern_func()
-                if match:
-                    logger.info(f"Found matching collection: {match}")
-                    return match
+            # Sort by score (highest first)
+            scored_collections.sort(key=lambda x: x[1], reverse=True)
             
-            # If we get here, no good match was found
+            logger.info(f"Collection matching scores: {scored_collections}")
+            
+            # Get the best match if score is above threshold
+            if scored_collections and scored_collections[0][1] >= 40:  # Minimum score threshold
+                best_match = scored_collections[0][0]
+                logger.info(f"Selected collection '{best_match}' with score {scored_collections[0][1]}")
+                return best_match
+            
+            # If no good match found, raise an error
             error_msg = (
-                f"No matching collection found for curriculum '{curriculum}' and subject '{subject}'. "
+                f"No suitable collection found for curriculum '{curriculum}' and subject '{subject}'. "
                 f"Available collections: {', '.join(collection_names)}"
             )
             logger.error(error_msg)
@@ -109,12 +150,13 @@ class QdrantService:
                     "error": "No matching collection found",
                     "available_collections": collection_names,
                     "requested_curriculum": curriculum,
-                    "requested_subject": subject
+                    "requested_subject": subject,
+                    "matching_scores": dict(scored_collections)
                 }
             )
                 
         except Exception as e:
-            logger.error(f"Error finding matching collection: {str(e)}")
+            logger.error(f"Error finding matching collection: {str(e)}", exc_info=True)
             raise
     
     def get_query_engine(self, collection_name: str, top_k: int = 5):
