@@ -1,14 +1,33 @@
+# Core
 fastapi
 uvicorn
 gunicorn
 python-dotenv
 pydantic
 pydantic-settings
-openai
+
+# Database & Vector Store
 qdrant-client
+
+# AI/ML
 groq
-python-multipart
+openai
 llama-index
 llama-index-llms-groq
 llama-index-embeddings-openai
 llama-index-vector-stores-qdrant
+
+# Utilities
+python-multipart
+requests
+httpx[http2]
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# Async
+anyio
+
+# Security
+python-jose[cryptography]
+passlib[bcrypt]

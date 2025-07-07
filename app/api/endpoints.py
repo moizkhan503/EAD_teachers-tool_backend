@@ -71,15 +71,32 @@ async def create_lesson_plan(
     """
     try:
         return await generate_lesson_plans_service(request)
+    except ConnectionError as e:
+        logger.error(f"Connection error in create_lesson_plan: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "Service temporarily unavailable",
+                "message": "The lesson planning service is currently unavailable. Please try again later."
+            }
+        )
     except ValueError as e:
+        logger.error(f"Validation error in create_lesson_plan: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": str(e)}
+            detail={
+                "error": "Invalid request",
+                "message": str(e)
+            }
         )
     except Exception as e:
+        logger.error(f"Unexpected error in create_lesson_plan: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": f"Failed to generate lesson plans: {str(e)}"}
+            detail={
+                "error": "Internal server error",
+                "message": "An unexpected error occurred while generating lesson plans."
+            }
         )
 
 @router.get("/health", status_code=status.HTTP_200_OK, summary="Health check")

@@ -73,28 +73,41 @@ class LessonPlanGenerator:
             
         Returns:
             LessonPlanResponse containing the generated lesson plans
+            
+        Raises:
+            ValueError: If there's an error generating the lesson plans
+            ConnectionError: If there's a connection issue with the Groq API
         """
+        if not settings.GROQ_API_KEY:
+            logger.error("GROQ_API_KEY is not set in environment variables")
+            raise ConnectionError("Service configuration error. Please check server logs.")
+            
         try:
             prompt = self._generate_prompt(request)
             
-            # Call Groq API
-            completion = self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful teaching assistant that creates detailed, engaging lesson plans."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                model=self.model,
-                temperature=0.7,
-                max_tokens=4000,
-                top_p=1,
-                response_format={"type": "json_object"}
-            )
+            # Call Groq API with timeout and better error handling
+            try:
+                completion = self.client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful teaching assistant that creates detailed, engaging lesson plans."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    model=self.model,
+                    temperature=0.7,
+                    max_tokens=4000,
+                    top_p=1,
+                    response_format={"type": "json_object"},
+                    timeout=30.0  # 30 seconds timeout
+                )
+            except Exception as e:
+                logger.error(f"Groq API connection error: {str(e)}")
+                raise ConnectionError("Unable to connect to the lesson planning service. Please try again later.") from e
             
             # Extract and parse the response
             response_content = completion.choices[0].message.content
