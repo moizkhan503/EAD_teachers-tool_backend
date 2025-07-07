@@ -64,9 +64,11 @@ middleware = [
         allow_headers=["*"],
         expose_headers=["*"],
     ),
+    # Allow all hosts in production for Railway
+    # You might want to restrict this to your domain in the future
     Middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"] if settings.DEBUG else ["yourdomain.com"],  # In production, replace with your domain
+        allowed_hosts=["*"],
     ),
     Middleware(ProcessTimeMiddleware),
 ]
