@@ -84,11 +84,11 @@ app = FastAPI(
 # Add GZip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Redirect HTTP to HTTPS in production
-if not settings.DEBUG and settings.ENV == "production":
-    app.add_middleware(HTTPSRedirectMiddleware)
+# Redirect HTTP to HTTPS in production - Railway handles this automatically
+# if not settings.DEBUG and settings.ENV == "production":
+#     app.add_middleware(HTTPSRedirectMiddleware)
 
-# Include API routers
+# Include API router
 app.include_router(
     api_endpoints.router,
     prefix="/api",
