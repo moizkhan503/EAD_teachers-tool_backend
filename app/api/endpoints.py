@@ -1,8 +1,12 @@
 """
 API endpoints for the curriculum planning service.
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from typing import List, Dict, Any
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 from app.models import (
     CurriculumRequest, 

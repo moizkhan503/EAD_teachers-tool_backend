@@ -61,17 +61,16 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
 middleware = [
     Middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.DEBUG else [str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+        allow_origins=["*"],  # Allow all origins
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["*"],  # Allow all methods
+        allow_headers=["*"],  # Allow all headers
         expose_headers=["*"],
     ),
-    # Allow all hosts in production for Railway
-    # You might want to restrict this to your domain in the future
+    # Allow all hosts
     Middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"],
+        allowed_hosts=["*"],  # Allow all hosts
     ),
     Middleware(ProcessTimeMiddleware),
 ]
