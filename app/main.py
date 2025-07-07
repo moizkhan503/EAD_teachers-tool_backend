@@ -4,14 +4,17 @@ Main FastAPI application module.
 import logging
 import logging.config
 import time
+import traceback
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware import Middleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
 from app.api import endpoints as api_endpoints
@@ -77,9 +80,9 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="API for curriculum planning using RAG with Qdrant and Groq",
     version="0.1.0",
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    openapi_url="/openapi.json" if settings.DEBUG else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
     middleware=middleware,
 )
 
@@ -109,23 +112,50 @@ async def root():
 
 # Exception handlers
 @app.exception_handler(404)
-async def not_found_exception_handler(request, exc):
+async def not_found_exception_handler(request: Request, exc: HTTPException):
     """Handle 404 Not Found errors."""
-    return {
-        "success": False,
-        "error": "Not Found",
-        "message": "The requested resource was not found"
-    }
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": "The requested resource was not found."},
+    )
 
 @app.exception_handler(500)
-async def server_error_exception_handler(request, exc):
-    """Handle 500 Internal Server errors."""
-    logger.error(f"Server error: {str(exc)}")
-    return {
-        "success": False,
-        "error": "Internal Server Error",
-        "message": "An unexpected error occurred"
+async def server_error_exception_handler(request: Request, exc: Exception):
+    """Handle 500 Internal Server errors with detailed logging."""
+    error_detail = {
+        "error": str(exc),
+        "type": exc.__class__.__name__,
+        "path": request.url.path,
     }
+    
+    # Log the full traceback for debugging
+    logger.error(
+        f"Internal Server Error: {str(exc)}\n"
+        f"Path: {request.url.path}\n"
+        f"Traceback: {''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))}"
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+    )
+
+# Add validation error handler
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error: {exc}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
+
+# Add HTTP exception handler
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
 
 # Application startup event
 @app.on_event("startup")
